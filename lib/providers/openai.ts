@@ -95,32 +95,13 @@ function resolveModelPreferences(model: string): {
 /**
  * 从配置的 endpoint 推导 openai SDK 的 baseURL
  *
- * - 支持默认的 https://api.openai.com/v1/chat/completions
- * - 支持自定义 /v1/chat/completions 或 Azure 兼容的 /chat/completions 路径
+ * 配置中存储的是完整路径（如 https://api.openai.com/v1/chat/completions），
+ * 只需去掉 /chat/completions 后缀即可得到 SDK 所需的 baseURL
  */
 function deriveOpenAIBaseURL(endpoint: string | null | undefined): string {
   const raw = endpoint || DEFAULT_ENDPOINTS.openai;
-
-  // 去掉查询参数
   const [withoutQuery] = raw.split("?");
-  let base = withoutQuery;
-
-  // 去掉 /chat/completions 这类具体路径，保留前缀
-  const chatIndex = base.indexOf("/chat/completions");
-  if (chatIndex !== -1) {
-    base = base.slice(0, chatIndex);
-  }
-
-  // 对于标准 OpenAI，确保以 /v1 结尾
-  const v1Index = base.indexOf("/v1");
-  if (v1Index !== -1) {
-    base = base.slice(0, v1Index + "/v1".length);
-  } else if (base.includes("api.openai.com")) {
-    // 若未显式包含 /v1，但域名是 api.openai.com，则补上 /v1
-    base = `${base.replace(/\/$/, "")}/v1`;
-  }
-
-  return base;
+  return withoutQuery.replace(/\/chat\/completions\/?$/, "");
 }
 
 /**

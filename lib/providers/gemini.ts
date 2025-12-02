@@ -41,30 +41,13 @@ const geminiClientCache: Map<string, OpenAI> =
 /**
  * 从配置的 endpoint 推导 baseURL
  *
- * 支持 OpenAI 兼容的路径格式：
- * - /v1/chat/completions
- * - /chat/completions
+ * 配置中存储的是完整路径（如 https://xxx/v1/chat/completions），
+ * 只需去掉 /chat/completions 后缀即可得到 SDK 所需的 baseURL
  */
 function deriveGeminiBaseURL(endpoint: string | null | undefined): string {
   const raw = endpoint || DEFAULT_ENDPOINTS.gemini;
-
-  // 去掉查询参数
   const [withoutQuery] = raw.split("?");
-  let base = withoutQuery;
-
-  // 去掉 /chat/completions 这类具体路径，保留前缀
-  const chatIndex = base.indexOf("/chat/completions");
-  if (chatIndex !== -1) {
-    base = base.slice(0, chatIndex);
-  }
-
-  // 确保以 /v1 结尾（如果原路径包含 /v1）
-  const v1Index = base.indexOf("/v1");
-  if (v1Index !== -1) {
-    base = base.slice(0, v1Index + "/v1".length);
-  }
-
-  return base;
+  return withoutQuery.replace(/\/chat\/completions\/?$/, "");
 }
 
 /**

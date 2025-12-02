@@ -41,31 +41,15 @@ const anthropicClientCache: Map<string, Anthropic> =
 /**
  * 从配置的 endpoint 推导 Anthropic SDK 的 baseURL
  *
- * - 支持默认的 https://api.anthropic.com/v1/messages
- * - 支持自定义 /v1/messages 路径
- * - 若使用第三方代理（例如 Liona、ZenMux 等），可直接将其作为 baseURL
+ * 配置中存储的是完整路径（如 https://api.anthropic.com/v1/messages），
+ * 只需去掉 /v1/messages 后缀即可得到 SDK 所需的 baseURL
  */
 function deriveAnthropicBaseURL(
   endpoint: string | null | undefined
 ): string {
   const raw = endpoint || DEFAULT_ENDPOINTS.anthropic;
-
-  // 去掉查询参数
   const [withoutQuery] = raw.split("?");
-  let base = withoutQuery;
-
-  // 去掉 /v1/messages 这类具体路径，保留前缀
-  const messagesIndex = base.indexOf("/v1/messages");
-  if (messagesIndex !== -1) {
-    base = base.slice(0, messagesIndex);
-  }
-
-  // 对于官方域名，若未显式包含 /v1，则补上
-  if (base.includes("api.anthropic.com") && !base.includes("/v1")) {
-    base = `${base.replace(/\/$/, "")}/v1`;
-  }
-
-  return base;
+  return withoutQuery.replace(/\/v1\/messages\/?$/, "");
 }
 
 /**
