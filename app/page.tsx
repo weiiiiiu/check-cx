@@ -10,16 +10,19 @@ export default async function Home() {
   const data = await loadDashboardData({ refreshMode: "missing" });
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-background via-background to-muted/40 py-10">
-      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 md:px-8">
+    <div className="py-12 md:py-16">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 sm:px-6 lg:px-12">
         <DashboardView initialData={data} />
       </main>
-      <div className="pointer-events-none fixed bottom-4 right-4 flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow-lg backdrop-blur">
-        <span className="uppercase tracking-widest text-[10px] text-muted-foreground/80">
-          version
-        </span>
-        <span className="font-mono text-sm text-foreground">{ESTIMATED_VERSION}</span>
-      </div>
+      
+      <footer className="mt-16 py-6 text-center">
+         <div className="inline-flex items-center gap-2 rounded-full border border-border/40 bg-background/60 px-4 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition hover:border-border/80 hover:text-foreground">
+          <span className="font-medium uppercase tracking-wider opacity-70">
+            Version
+          </span>
+          <span className="font-mono text-current">{ESTIMATED_VERSION}</span>
+        </div>
+      </footer>
     </div>
   );
 }

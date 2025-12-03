@@ -35,12 +35,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-background via-background to-muted/40 py-10">
-      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 md:px-8">
+    <div className="min-h-screen py-12 md:py-16">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 sm:px-6 lg:px-12">
         {/* 返回首页链接 */}
         <Link
           href="/"
-          className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-card hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border/40 bg-background/60 px-4 py-1.5 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition hover:border-border/80 hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
           返回首页

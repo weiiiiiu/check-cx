@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink, RefreshCcw, Activity, Zap, Radio } from "lucide-react";
 
 import { ProviderIcon } from "@/components/provider-icon";
 import { StatusTimeline } from "@/components/status-timeline";
@@ -47,6 +47,20 @@ const formatLatency = (value: number | null | undefined) =>
 // 未分组标识常量
 const UNGROUPED_KEY = "__ungrouped__";
 
+/** Tech-style decorative corner plus marker */
+const CornerPlus = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1" 
+    className={cn("absolute h-4 w-4 text-muted-foreground/40", className)}
+  >
+    <line x1="12" y1="0" x2="12" y2="24" />
+    <line x1="0" y1="12" x2="24" y2="12" />
+  </svg>
+);
+
 /** Provider 卡片组件 */
 function ProviderCard({
   timeline,
@@ -69,72 +83,67 @@ function ProviderCard({
     : null;
 
   return (
-    <Card
-      key={id}
-      className="relative z-0 border bg-card/80 shadow-lg shadow-primary/5 transition hover:z-20 hover:border-primary/40 focus-within:z-20"
-    >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
-        <div className="absolute inset-y-0 right-[-30%] h-[200%] w-[60%] rounded-full bg-gradient-to-tr from-primary/10 via-transparent to-transparent blur-3xl" />
-      </div>
-      <CardHeader className="relative z-10 gap-5 pb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70">
-            <ProviderIcon type={latest.type} size={22} />
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/40 bg-background/40 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20">
+      {/* Decorative markers */}
+      <CornerPlus className="left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100" />
+      <CornerPlus className="right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100" />
+      
+      <div className="flex-1 p-5">
+        <div className="mb-4 flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-white/80 to-white/20 shadow-sm ring-1 ring-black/5 transition-transform group-hover:scale-105 dark:from-white/10 dark:to-white/5 dark:ring-white/10">
+              <ProviderIcon type={latest.type} size={26} className="text-foreground/80" />
+            </div>
+            <div>
+              <h3 className="font-bold leading-none tracking-tight text-foreground">
+                {latest.name}
+              </h3>
+              <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                 <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 font-medium text-muted-foreground/80">
+                  {PROVIDER_LABEL[latest.type]}
+                </span>
+                <span className="font-mono opacity-60">{latest.model}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <CardTitle className="text-lg">{latest.name}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {PROVIDER_LABEL[latest.type]} ·{" "}
-              <span className="font-mono">{latest.model}</span>
-            </p>
-          </div>
-          <Badge variant={preset.badge} className="text-xs">
+          <Badge variant={preset.badge} className="rounded-lg px-2.5 py-1 text-xs font-semibold uppercase tracking-wider shadow-sm backdrop-blur-md">
             {preset.label}
           </Badge>
         </div>
 
-        <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              最近检查
-            </p>
-            <p className="mt-1 text-foreground">
-              {formatLocalTime(latest.checkedAt)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              对话首字
-            </p>
-            <p className="mt-1 text-foreground">
-              {formatLatency(latest.latencyMs)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              端点 Ping
-            </p>
-            <p className="mt-1 text-foreground">
-              {formatLatency(latest.pingLatencyMs)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              官方状态
-            </p>
-            <p className="mt-1 text-foreground">
-              {officialStatus && officialStatusMeta ? (
+        <div className="mb-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-muted/30 p-3 transition-colors group-hover:bg-muted/50">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Zap className="h-3.5 w-3.5" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider">对话延迟</span>
+              </div>
+              <div className="mt-1 font-mono text-lg font-medium leading-none text-foreground">
+                {formatLatency(latest.latencyMs)}
+              </div>
+            </div>
+            
+            <div className="rounded-xl bg-muted/30 p-3 transition-colors group-hover:bg-muted/50">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Radio className="h-3.5 w-3.5" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider">端点 PING</span>
+              </div>
+              <div className="mt-1 font-mono text-lg font-medium leading-none text-foreground">
+                {formatLatency(latest.pingLatencyMs)}
+              </div>
+            </div>
+        </div>
+
+        <div className="space-y-3 border-t border-border/30 pt-4">
+           {/* Official Status Row */}
+           <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">官方状态</span>
+             {officialStatus && officialStatusMeta ? (
                 <HoverCard
                   openDelay={isCoarsePointer ? 0 : 200}
-                  open={
-                    isCoarsePointer
-                      ? activeOfficialCardId === id
-                      : undefined
-                  }
+                  open={isCoarsePointer ? activeOfficialCardId === id : undefined}
                   onOpenChange={
                     isCoarsePointer
-                      ? (nextOpen) =>
-                          setActiveOfficialCardId(nextOpen ? id : null)
+                      ? (nextOpen) => setActiveOfficialCardId(nextOpen ? id : null)
                       : undefined
                   }
                 >
@@ -142,46 +151,36 @@ function ProviderCard({
                     <button
                       type="button"
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm font-medium transition hover:border-border/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60",
-                        officialStatusMeta.color
+                        "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium transition-colors hover:bg-muted",
+                        officialStatusMeta.color.replace('text-', 'text-')
                       )}
-                      aria-label={`官方状态：${officialStatusMeta.label}，点按查看详情`}
                       onClick={
                         isCoarsePointer
-                          ? () => {
-                              setActiveOfficialCardId(
-                                activeOfficialCardId === id ? null : id
-                              );
-                            }
+                          ? () => setActiveOfficialCardId(activeOfficialCardId === id ? null : id)
                           : undefined
                       }
                     >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-current"
-                        aria-hidden="true"
-                      />
+                      <span className={cn("h-1.5 w-1.5 rounded-full", officialStatusMeta.color.replace('text-', 'bg-'))} />
                       {officialStatusMeta.label}
                     </button>
                   </HoverCardTrigger>
-                  <HoverCardContent className="space-y-2 text-sm">
-                    <div>
-                      <p className="text-base font-medium text-foreground">
+                   <HoverCardContent className="w-80 space-y-3 backdrop-blur-xl bg-background/95">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-semibold text-foreground">
                         {officialStatusMeta.label}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        最近更新：{formatLocalTime(officialStatus.checkedAt)}
-                      </p>
+                      </h4>
+                      <span className="text-xs text-muted-foreground">
+                        {formatLocalTime(officialStatus.checkedAt)} 更新
+                      </span>
                     </div>
-                    <p className="text-sm text-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {officialStatus.message || "暂无官方说明"}
                     </p>
                     {officialStatus.affectedComponents &&
                       officialStatus.affectedComponents.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground">
-                            受影响组件
-                          </p>
-                          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground">
+                        <div className="rounded-md bg-muted/50 p-2 text-xs">
+                          <p className="mb-1.5 font-medium text-foreground">受影响组件</p>
+                          <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                             {officialStatus.affectedComponents.map((component, index) => (
                               <li key={`${component}-${index}`}>{component}</li>
                             ))}
@@ -190,41 +189,35 @@ function ProviderCard({
                       )}
                   </HoverCardContent>
                 </HoverCard>
-              ) : (
-                <span className="text-gray-500">—</span>
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              检测次数
-            </p>
-            <p className="mt-1 text-foreground">{items.length} 次检测</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              可用性（近60次）
-            </p>
-            <p className="mt-1 text-foreground">
-              {items.length > 0
+             ) : (
+                <span className="text-xs text-muted-foreground/40">—</span>
+             )}
+           </div>
+            
+           {/* Availability Row */}
+           <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">近期可用性</span>
+              <span className="font-mono text-xs font-bold text-foreground">
+                 {items.length > 0
                 ? `${(
                     (items.filter(
                       (item) =>
-                        item.status === "operational" ||
-                        item.status === "degraded"
+                        item.status === "operational" || item.status === "degraded"
                     ).length /
                       items.length) *
                     100
-                  ).toFixed(1)}%`
+                  ).toFixed(0)}%`
                 : "—"}
-            </p>
-          </div>
+              </span>
+           </div>
         </div>
-      </CardHeader>
-      <CardContent className="relative z-10 border-t border-border/60 pt-4">
-        <StatusTimeline items={items} nextRefreshInMs={timeToNextRefresh} />
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Timeline Section - Visual separation */}
+      <div className="border-t border-border/40 bg-muted/10 px-5 py-4">
+         <StatusTimeline items={items} nextRefreshInMs={timeToNextRefresh} />
+      </div>
+    </div>
   );
 }
 
@@ -248,7 +241,6 @@ function GroupPanel({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
-  // 计算分组内状态统计
   const statusSummary = useMemo(() => {
     const counts = { operational: 0, degraded: 0, failed: 0, maintenance: 0 };
     for (const timeline of group.timelines) {
@@ -260,58 +252,44 @@ function GroupPanel({
     return counts;
   }, [group.timelines]);
 
-  // 生成分组详情页链接
   const groupLink = `/group/${encodeURIComponent(group.groupName)}`;
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-4">
-      <div className="flex items-center gap-2 rounded-xl border bg-card/60 px-4 py-3 shadow-sm sm:px-6 sm:py-4">
-        <CollapsibleTrigger className="group flex flex-1 items-center justify-between text-left transition hover:opacity-80">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <h2 className="text-base font-semibold sm:text-lg">{group.displayName}</h2>
-              <span className="whitespace-nowrap text-xs text-muted-foreground sm:text-sm">
-                {group.timelines.length} 个配置
-              </span>
-            </div>
-          {/* 状态统计徽章 */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            {statusSummary.operational > 0 && (
-              <Badge variant="success" className="text-xs">
-                {statusSummary.operational} 正常
-              </Badge>
-            )}
-            {statusSummary.degraded > 0 && (
-              <Badge variant="warning" className="text-xs">
-                {statusSummary.degraded} 延迟
-              </Badge>
-            )}
-            {statusSummary.failed > 0 && (
-              <Badge variant="danger" className="text-xs">
-                {statusSummary.failed} 异常
-              </Badge>
-            )}
-            {statusSummary.maintenance > 0 && (
-              <Badge variant="secondary" className="text-xs">
-                {statusSummary.maintenance} 维护
-              </Badge>
-            )}
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="rounded-3xl border bg-white/30 p-6 backdrop-blur-sm dark:bg-black/10">
+      <div className="flex items-center justify-between">
+        <CollapsibleTrigger className="group flex items-center gap-4 text-left transition hover:opacity-80 focus-visible:outline-none">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-colors group-hover:bg-white/80 dark:bg-white/10 dark:ring-white/10">
+            <ChevronDown className="h-5 w-5 text-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
           </div>
-        </div>
-        <ChevronDown className="ml-2 h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
-      </CollapsibleTrigger>
-      {/* 分组详情页链接 */}
-      <Link
-        href={groupLink}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-        title={`查看 ${group.displayName} 分组详情`}
-      >
-        <ExternalLink className="h-4 w-4" />
-      </Link>
-    </div>
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{group.displayName}</h2>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+               {statusSummary.operational > 0 && (
+                 <span className="flex items-center gap-1.5">
+                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                   {statusSummary.operational} 正常
+                 </span>
+               )}
+               {(statusSummary.degraded > 0 || statusSummary.failed > 0) && (
+                 <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    {statusSummary.degraded + statusSummary.failed} 异常
+                 </span>
+               )}
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        
+        <Link
+            href={groupLink}
+            className="group flex h-10 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-medium text-background transition-all hover:bg-foreground/90 hover:px-6"
+        >
+            详情 <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+        </Link>
+      </div>
 
-      <CollapsibleContent>
-        <div className={`grid gap-4 sm:gap-6 ${gridColsClass}`}>
+      <CollapsibleContent className="animate-in fade-in-0 slide-in-from-top-2">
+        <div className={`mt-2 grid gap-6 ${gridColsClass}`}>
           {group.timelines.map((timeline) => (
             <ProviderCard
               key={timeline.id}
@@ -380,17 +358,13 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     if (typeof window === "undefined") {
       return;
     }
-
     const media = window.matchMedia("(pointer: coarse)");
-
     const updatePointerType = () => {
       const hasTouch = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
       setIsCoarsePointer(media.matches || hasTouch);
     };
-
     updatePointerType();
     media.addEventListener("change", updatePointerType);
-
     return () => media.removeEventListener("change", updatePointerType);
   }, []);
 
@@ -415,13 +389,11 @@ export function DashboardView({ initialData }: DashboardViewProps) {
       setTimeToNextRefresh(null);
       return;
     }
-
     const updateCountdown = () => {
       setTimeToNextRefresh(
         computeRemainingMs(data.pollIntervalMs, latestCheckTimestamp)
       );
     };
-
     updateCountdown();
     const countdownTimer = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(countdownTimer);
@@ -436,12 +408,11 @@ export function DashboardView({ initialData }: DashboardViewProps) {
   // 根据卡片数量决定宽屏列数
   const gridColsClass = useMemo(() => {
     if (total > 4) {
-      return "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3";
+      return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
     }
-    return "grid-cols-1 lg:grid-cols-2";
+    return "grid-cols-1 md:grid-cols-2";
   }, [total]);
 
-  // 判断是否需要分组展示
   const hasMultipleGroups = useMemo(() => {
     return (
       groupedTimelines.length > 1 ||
@@ -450,73 +421,100 @@ export function DashboardView({ initialData }: DashboardViewProps) {
   }, [groupedTimelines]);
 
   return (
-    <>
-      <header className="rounded-3xl border bg-card/70 p-8 shadow-sm backdrop-blur-sm">
-        <div className="space-y-2">
-          <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="relative flex h-4 w-4 items-center justify-center">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+    <div className="relative">
+       {/* Corner decorative markers for the main container */}
+       <CornerPlus className="fixed left-4 top-4 h-6 w-6 text-border md:left-8 md:top-8" />
+       <CornerPlus className="fixed right-4 top-4 h-6 w-6 text-border md:right-8 md:top-8" />
+       <CornerPlus className="fixed bottom-4 left-4 h-6 w-6 text-border md:bottom-8 md:left-8" />
+       <CornerPlus className="fixed bottom-4 right-4 h-6 w-6 text-border md:bottom-8 md:right-8" />
+
+      <header className="relative z-10 mb-12 flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-background">
+              <Activity className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+              System Status
             </span>
-            实时检查多模型可用性
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            模型对话健康面板
+          </div>
+          
+          <h1 className="max-w-2xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl">
+            AI SERVICES <br />
+            <span className="text-muted-foreground">INTELLIGENCE MONITOR</span>
           </h1>
-          {lastUpdatedLabel ? (
-            <p className="text-sm text-muted-foreground">
-              最近更新：{lastUpdatedLabel} · 数据每 {pollIntervalLabel} 自动刷新{" "}
-              {isRefreshing && <span className="text-primary">（同步中…）</span>}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              尚未找到任何检测配置，请在 Supabase 的{" "}
-              <span className="font-mono">check_configs</span> 表中添加至少一条{" "}
-              <code>enabled = true</code> 的配置。
-            </p>
-          )}
+          
+          <div className="flex max-w-lg flex-col gap-2 text-muted-foreground">
+             <p className="leading-relaxed">
+               实时追踪各大 AI 模型对话接口的可用性、延迟与官方服务状态。
+               <br />
+               Advanced performance metrics for next-gen intelligence.
+             </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start gap-4 lg:items-end">
+           {/* Status Pill */}
+           <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/50 px-4 py-1.5 backdrop-blur-sm">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Operational</span>
+           </div>
+
+           {lastUpdatedLabel && (
+             <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <RefreshCcw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
+                  <span>更新于 {lastUpdatedLabel}</span>
+                </div>
+                <span className="opacity-30">|</span>
+                <span>{pollIntervalLabel} 轮询</span>
+             </div>
+           )}
         </div>
       </header>
 
-      {total === 0 ? (
-        <Card className="border-dashed bg-card/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              尚未配置任何检查目标
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      ) : hasMultipleGroups ? (
-        // 分组展示模式
-        <section className="space-y-6">
-          {groupedTimelines.map((group) => (
-            <GroupPanel
-              key={group.groupName}
-              group={group}
-              timeToNextRefresh={timeToNextRefresh}
-              isCoarsePointer={isCoarsePointer}
-              activeOfficialCardId={activeOfficialCardId}
-              setActiveOfficialCardId={setActiveOfficialCardId}
-              gridColsClass={gridColsClass}
-              defaultOpen={false}
-            />
-          ))}
-        </section>
-      ) : (
-        // 无分组时保持原有扁平展示
-        <section className={`grid gap-6 ${gridColsClass}`}>
-          {providerTimelines.map((timeline) => (
-            <ProviderCard
-              key={timeline.id}
-              timeline={timeline}
-              timeToNextRefresh={timeToNextRefresh}
-              isCoarsePointer={isCoarsePointer}
-              activeOfficialCardId={activeOfficialCardId}
-              setActiveOfficialCardId={setActiveOfficialCardId}
-            />
-          ))}
-        </section>
-      )}
-    </>
+      <main className="relative z-10 min-h-[50vh]">
+        {total === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/50 bg-muted/20 py-20 text-center">
+            <div className="mb-4 rounded-full bg-muted/50 p-4">
+              <Activity className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">尚无监控目标</h3>
+            <p className="text-muted-foreground">请配置检查端点以开始监控</p>
+          </div>
+        ) : hasMultipleGroups ? (
+          <div className="space-y-4">
+            {groupedTimelines.map((group) => (
+              <GroupPanel
+                key={group.groupName}
+                group={group}
+                timeToNextRefresh={timeToNextRefresh}
+                isCoarsePointer={isCoarsePointer}
+                activeOfficialCardId={activeOfficialCardId}
+                setActiveOfficialCardId={setActiveOfficialCardId}
+                gridColsClass={gridColsClass}
+                defaultOpen={false}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={`grid gap-6 ${gridColsClass}`}>
+            {providerTimelines.map((timeline) => (
+              <ProviderCard
+                key={timeline.id}
+                timeline={timeline}
+                timeToNextRefresh={timeToNextRefresh}
+                isCoarsePointer={isCoarsePointer}
+                activeOfficialCardId={activeOfficialCardId}
+                setActiveOfficialCardId={setActiveOfficialCardId}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

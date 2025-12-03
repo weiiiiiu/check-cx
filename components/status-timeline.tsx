@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Clock } from "lucide-react";
 
 import { ProviderIcon } from "@/components/provider-icon";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Badge } from "@/components/ui/badge";
 import { PROVIDER_LABEL, STATUS_META } from "@/lib/core/status";
 import type { TimelineItem } from "@/lib/types";
 import { cn, formatLocalTime } from "@/lib/utils";
@@ -15,25 +17,22 @@ interface StatusTimelineProps {
   nextRefreshInMs?: number | null;
 }
 
-/** 时间线最多绘制的片段数量，对应每个 Provider 保留的历史点数上限 */
+/** 时间线最多绘制的片段数量 */
 const SEGMENT_LIMIT = 60;
+
 const formatRemainingTime = (ms: number) => {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes > 0) {
-    return `${minutes}分${seconds.toString().padStart(2, "0")}秒`;
+    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
   }
-  return `${seconds}秒`;
+  return `${seconds}s`;
 };
 
 const formatLatency = (value: number | null | undefined) =>
   typeof value === "number" ? `${value} ms` : "—";
 
-/**
- * 单个 Provider 的状态时间线
- * 使用固定长度的分段条展示最近若干次检测的成功/降级/失败情况
- */
 export function StatusTimeline({ items, nextRefreshInMs }: StatusTimelineProps) {
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [activeSegmentKey, setActiveSegmentKey] = useState<string | null>(null);
@@ -63,8 +62,8 @@ export function StatusTimeline({ items, nextRefreshInMs }: StatusTimelineProps) 
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-muted/30 p-6 text-sm text-muted-foreground">
-        该模型处于维护状态。
+      <div className="flex items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/10 p-4 text-xs text-muted-foreground">
+        NO DATA AVAILABLE
       </div>
     );
   }
@@ -77,88 +76,104 @@ export function StatusTimeline({ items, nextRefreshInMs }: StatusTimelineProps) 
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-white/5 via-transparent to-white/5 blur-xl" />
-        <div className="relative h-7 w-full border border-border/60 bg-background/80 shadow-inner">
-          <div className="flex h-full w-full flex-row-reverse gap-px">
-            {segments.map((segment, index) => {
-              if (!segment) {
-                return (
-                  <div
-                    key={`placeholder-${index}`}
-                    className="flex-1 bg-border/70"
-                    aria-label="未采样"
-                  />
-                );
-              }
-
-              const preset = STATUS_META[segment.status];
-              const formattedTime = formatLocalTime(segment.checkedAt);
-              const segmentKey = `${segment.id}-${segment.checkedAt}`;
-              const isOpen = activeSegmentKey === segmentKey;
-
-              return (
-                <HoverCard
-                  key={segmentKey}
-                  open={isOpen}
-                  openDelay={isCoarsePointer ? 0 : 120}
-                  onOpenChange={(nextOpen) =>
-                    setActiveSegmentKey(nextOpen ? segmentKey : null)
-                  }
-                >
-                  <HoverCardTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        "relative block h-full w-full flex-1 transition-all duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/60",
-                        preset?.dot
-                      )}
-                      aria-label={`${formattedTime} · ${preset.label} · 对话 ${formatLatency(
-                        segment.latencyMs
-                      )} · Ping ${formatLatency(segment.pingLatencyMs)}`}
-                      onClick={() =>
-                        setActiveSegmentKey((current) =>
-                          current === segmentKey ? null : segmentKey
-                        )
-                      }
-                    />
-                  </HoverCardTrigger>
-                  <HoverCardContent
-                    side="top"
-                    className="w-60 space-y-1 rounded-xl border border-border/80 p-3 text-[11px] text-foreground shadow-lg shadow-black/30 backdrop-blur"
-                  >
-                    <p className="text-xs font-semibold">
-                      {preset.label} · {formattedTime}
-                    </p>
-                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <ProviderIcon type={segment.type} size={14} />
-                      {PROVIDER_LABEL[segment.type]}
-                      <span className="font-mono text-foreground">{segment.model}</span>
-                    </p>
-                    <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-                      <span>对话首字 {formatLatency(segment.latencyMs)}</span>
-                      <span>端点 Ping {formatLatency(segment.pingLatencyMs)}</span>
-                    </div>
-                    <p className="line-clamp-3 text-[11px] text-foreground">
-                      {segment.message}
-                    </p>
-                  </HoverCardContent>
-                </HoverCard>
-              );
-            })}
-          </div>
+      {/* Header / Legend */}
+      <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span>History (60pts)</span>
+        </div>
+        <div className="flex items-center gap-2">
+           {nextRefreshLabel ? (
+             <span className="flex items-center gap-1.5 text-primary">
+               <Clock className="h-3 w-3" />
+               Next update in {nextRefreshLabel}
+             </span>
+           ) : (
+             <span className="opacity-50">Manual Refresh</span>
+           )}
         </div>
       </div>
-      <div className="flex items-center justify-between text-[10px] font-medium text-muted-foreground">
-        <span>最早</span>
-        {nextRefreshLabel ? (
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary/80">
-            下次刷新 {nextRefreshLabel}
-          </span>
-        ) : (
-          <span className="text-muted-foreground/70">手动刷新</span>
-        )}
-        <span>最近</span>
+
+      {/* Timeline Bar */}
+      <div className="relative h-8 w-full overflow-hidden rounded-sm bg-muted/20">
+        <div className="flex h-full w-full flex-row-reverse gap-[2px] p-[2px]">
+          {segments.map((segment, index) => {
+            if (!segment) {
+              return (
+                <div
+                  key={`placeholder-${index}`}
+                  className="flex-1 rounded-[1px] bg-muted/10"
+                  aria-label="No Data"
+                />
+              );
+            }
+
+            const preset = STATUS_META[segment.status];
+            const formattedTime = formatLocalTime(segment.checkedAt);
+            const segmentKey = `${segment.id}-${segment.checkedAt}`;
+            const isOpen = activeSegmentKey === segmentKey;
+
+            return (
+              <HoverCard
+                key={segmentKey}
+                open={isOpen}
+                openDelay={isCoarsePointer ? 0 : 100}
+                onOpenChange={(nextOpen) =>
+                  setActiveSegmentKey(nextOpen ? segmentKey : null)
+                }
+              >
+                <HoverCardTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "relative block h-full w-full flex-1 rounded-[1px] transition-all duration-200",
+                      preset?.dot, // Use the existing bg utility from meta
+                      "hover:opacity-80 hover:scale-y-110",
+                      isOpen && "ring-1 ring-foreground/20 scale-y-110 z-10"
+                    )}
+                    aria-label={`${formattedTime} · ${preset.label}`}
+                    onClick={() =>
+                      setActiveSegmentKey((current) =>
+                        current === segmentKey ? null : segmentKey
+                      )
+                    }
+                  />
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="top"
+                  className="w-64 space-y-3 rounded-xl border-border/50 bg-background/95 p-4 shadow-xl backdrop-blur-xl"
+                >
+                   <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                      <Badge variant={preset.badge} className="h-5 px-1.5 text-[10px]">{preset.label}</Badge>
+                      <span className="font-mono text-[10px] text-muted-foreground">{formattedTime}</span>
+                   </div>
+                   
+                   <div className="grid gap-2 text-xs">
+                      <div className="flex items-center justify-between">
+                         <span className="text-muted-foreground">Latency</span>
+                         <span className="font-mono font-medium">{formatLatency(segment.latencyMs)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                         <span className="text-muted-foreground">Ping</span>
+                         <span className="font-mono font-medium">{formatLatency(segment.pingLatencyMs)}</span>
+                      </div>
+                   </div>
+                   
+                   {segment.message && (
+                     <div className="rounded bg-muted/30 p-2 text-[10px] text-muted-foreground">
+                       {segment.message}
+                     </div>
+                   )}
+                </HoverCardContent>
+              </HoverCard>
+            );
+          })}
+        </div>
+      </div>
+      
+      {/* Axis labels */}
+      <div className="flex justify-between text-[9px] font-medium uppercase tracking-widest text-muted-foreground/50">
+        <span>-60m</span>
+        <span>Now</span>
       </div>
     </div>
   );
