@@ -105,9 +105,51 @@ COMMENT ON COLUMN public.system_notifications.created_at IS '创建时间';
 
 CREATE INDEX idx_check_history_config_id ON public.check_history (config_id);
 CREATE INDEX idx_check_history_checked_at ON public.check_history (checked_at DESC);
+CREATE INDEX idx_history_config_checked ON public.check_history (config_id, checked_at DESC);
 
 -- -----------------------------------------------------------------------------
--- 4. 触发器函数
+-- 4. 视图
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW public.availability_stats AS
+SELECT
+    config_id,
+    '7d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM public.check_history
+WHERE checked_at > NOW() - INTERVAL '7 days'
+GROUP BY config_id
+
+UNION ALL
+
+SELECT
+    config_id,
+    '15d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM public.check_history
+WHERE checked_at > NOW() - INTERVAL '15 days'
+GROUP BY config_id
+
+UNION ALL
+
+SELECT
+    config_id,
+    '30d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM public.check_history
+WHERE checked_at > NOW() - INTERVAL '30 days'
+GROUP BY config_id;
+
+COMMENT ON VIEW public.availability_stats IS '可用性统计视图，提供 7天/15天/30天 的可用性百分比';
+
+-- -----------------------------------------------------------------------------
+-- 5. 触发器函数
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -121,7 +163,7 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- 5. 触发器
+-- 6. 触发器
 -- -----------------------------------------------------------------------------
 
 CREATE TRIGGER update_check_configs_updated_at
@@ -135,7 +177,7 @@ CREATE TRIGGER update_group_info_updated_at
     EXECUTE FUNCTION public.update_updated_at_column();
 
 -- -----------------------------------------------------------------------------
--- 6. RLS (Row Level Security)
+-- 7. RLS (Row Level Security)
 -- -----------------------------------------------------------------------------
 
 ALTER TABLE public.check_configs ENABLE ROW LEVEL SECURITY;
@@ -165,7 +207,7 @@ CREATE POLICY allow_public_read_notifications
     USING (true);
 
 -- -----------------------------------------------------------------------------
--- 7. 存储过程 / 函数
+-- 8. 存储过程 / 函数
 -- -----------------------------------------------------------------------------
 
 -- 获取最近的检测历史记录
@@ -222,20 +264,67 @@ $$;
 
 -- 清理过期的历史记录
 CREATE OR REPLACE FUNCTION public.prune_check_history(
-    limit_per_config integer DEFAULT 60
+    retention_days integer DEFAULT NULL,
+    limit_per_config integer DEFAULT NULL
 )
-RETURNS void
-LANGUAGE sql
+RETURNS integer
+LANGUAGE plpgsql
 VOLATILE
 AS $$
-    WITH ranked AS (
-        SELECT
-            id,
-            row_number() OVER (PARTITION BY config_id ORDER BY checked_at DESC) AS rn
-        FROM check_history
-    )
-    DELETE FROM check_history
-    WHERE id IN (
-        SELECT id FROM ranked WHERE rn > limit_per_config
-    );
+DECLARE
+    effective_days integer;
+    deleted_count integer;
+BEGIN
+    effective_days := LEAST(365, GREATEST(7, COALESCE(retention_days, limit_per_config, 30)));
+
+    DELETE FROM public.check_history
+    WHERE checked_at < NOW() - (effective_days || ' days')::interval;
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
 $$;
+
+COMMENT ON FUNCTION public.prune_check_history IS '清理超过指定天数的历史记录，默认保留 30 天';
+
+-- 按时间范围查询历史记录
+CREATE OR REPLACE FUNCTION public.get_check_history_by_time(
+    since_interval interval DEFAULT '1 hour',
+    target_config_ids uuid[] DEFAULT NULL
+)
+RETURNS TABLE (
+    config_id       uuid,
+    status          text,
+    latency_ms      integer,
+    ping_latency_ms integer,
+    checked_at      timestamptz,
+    message         text,
+    name            text,
+    type            text,
+    model           text,
+    endpoint        text,
+    group_name      text
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT
+        h.config_id,
+        h.status,
+        h.latency_ms,
+        h.ping_latency_ms::integer,
+        h.checked_at,
+        h.message,
+        c.name,
+        c.type::text,
+        c.model,
+        c.endpoint,
+        c.group_name
+    FROM public.check_history h
+    JOIN public.check_configs c ON c.id = h.config_id
+    WHERE h.checked_at > NOW() - since_interval
+      AND (target_config_ids IS NULL OR h.config_id = ANY(target_config_ids))
+    ORDER BY c.name ASC, h.checked_at DESC;
+$$;
+
+COMMENT ON FUNCTION public.get_check_history_by_time IS '按时间范围查询历史记录';

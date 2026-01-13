@@ -5,7 +5,7 @@
 import "server-only";
 import type {PostgrestError, SupabaseClient} from "@supabase/supabase-js";
 import {createAdminClient} from "../supabase/admin";
-import type {CheckResult, HistorySnapshot} from "../types";
+import type {AvailabilityPeriod, CheckResult, HistorySnapshot, TrendDataMap, TrendDataPoint} from "../types";
 import {logError} from "../utils";
 
 /**
@@ -13,8 +13,21 @@ import {logError} from "../utils";
  */
 export const MAX_POINTS_PER_PROVIDER = 60;
 
+const DEFAULT_RETENTION_DAYS = 30;
+const MIN_RETENTION_DAYS = 7;
+const MAX_RETENTION_DAYS = 365;
+
+export const HISTORY_RETENTION_DAYS = (() => {
+  const raw = Number(process.env.HISTORY_RETENTION_DAYS);
+  if (Number.isFinite(raw)) {
+    return Math.max(MIN_RETENTION_DAYS, Math.min(MAX_RETENTION_DAYS, raw));
+  }
+  return DEFAULT_RETENTION_DAYS;
+})();
+
 const RPC_RECENT_HISTORY = "get_recent_check_history";
 const RPC_PRUNE_HISTORY = "prune_check_history";
+const RPC_HISTORY_BY_TIME = "get_check_history_by_time";
 
 export interface HistoryQueryOptions {
   allowedIds?: Iterable<string> | null;
@@ -88,23 +101,23 @@ class SnapshotStore {
     await this.pruneInternal(supabase);
   }
 
-  async prune(limit: number = MAX_POINTS_PER_PROVIDER): Promise<void> {
+  async prune(retentionDays: number = HISTORY_RETENTION_DAYS): Promise<void> {
     const supabase = createAdminClient();
-    await this.pruneInternal(supabase, limit);
+    await this.pruneInternal(supabase, retentionDays);
   }
 
   private async pruneInternal(
     supabase: SupabaseClient<any, string>,
-    limit: number = MAX_POINTS_PER_PROVIDER
+    retentionDays: number = HISTORY_RETENTION_DAYS
   ): Promise<void> {
     const { error } = await supabase.rpc(RPC_PRUNE_HISTORY, {
-      limit_per_config: limit,
+      retention_days: retentionDays,
     });
 
     if (error) {
       logError("清理历史记录失败", error);
       if (isMissingFunctionError(error)) {
-        await fallbackPruneHistory(supabase, limit);
+        await fallbackPruneHistory(supabase, retentionDays);
       }
     }
   }
@@ -185,7 +198,8 @@ function isMissingFunctionError(error: PostgrestError | null): boolean {
   }
   return (
     error.message.includes(RPC_RECENT_HISTORY) ||
-    error.message.includes(RPC_PRUNE_HISTORY)
+    error.message.includes(RPC_PRUNE_HISTORY) ||
+    error.message.includes(RPC_HISTORY_BY_TIME)
   );
 }
 
@@ -273,41 +287,21 @@ async function fallbackFetchSnapshot(
 
 async function fallbackPruneHistory(
   supabase: SupabaseClient<any, string>,
-  limit: number
+  retentionDays: number
 ): Promise<void> {
   try {
-    const { data, error } = await supabase
-      .from("check_history")
-      .select("id, config_id, checked_at")
-      .order("config_id")
-      .order("checked_at", { ascending: false });
-
-    if (error || !data) {
-      if (error) {
-        logError("fallback 模式下查询历史失败", error);
-      }
-      return;
-    }
-
-    const deleteIds: string[] = [];
-    const seen = new Map<string, number>();
-    for (const record of data) {
-      const count = seen.get(record.config_id) ?? 0;
-      if (count >= limit) {
-        deleteIds.push(record.id);
-      } else {
-        seen.set(record.config_id, count + 1);
-      }
-    }
-
-    if (deleteIds.length === 0) {
-      return;
-    }
+    const effectiveDays = Math.max(
+      MIN_RETENTION_DAYS,
+      Math.min(MAX_RETENTION_DAYS, retentionDays)
+    );
+    const cutoff = new Date(
+      Date.now() - effectiveDays * 24 * 60 * 60 * 1000
+    ).toISOString();
 
     const { error: deleteError } = await supabase
       .from("check_history")
       .delete()
-      .in("id", deleteIds);
+      .lt("checked_at", cutoff);
 
     if (deleteError) {
       logError("fallback 模式下删除历史失败", deleteError);
@@ -315,4 +309,167 @@ async function fallbackPruneHistory(
   } catch (error) {
     logError("fallback 模式下清理历史异常", error);
   }
+}
+
+interface RpcHistoryTrendRow {
+  config_id: string;
+  status: string;
+  latency_ms: number | null;
+  checked_at: string;
+}
+
+const PERIOD_INTERVALS: Record<string, string> = {
+  "7d": "7 days",
+  "15d": "15 days",
+  "30d": "30 days",
+};
+
+export async function loadHistoryTrendData(options: {
+  period: AvailabilityPeriod;
+  allowedIds?: Iterable<string> | null;
+}): Promise<TrendDataMap> {
+  const normalizedIds = normalizeAllowedIds(options.allowedIds);
+  if (Array.isArray(normalizedIds) && normalizedIds.length === 0) {
+    return {};
+  }
+
+  const supabase = createAdminClient();
+  const sinceInterval = PERIOD_INTERVALS[options.period] ?? "7 days";
+  const { data, error } = await supabase.rpc(RPC_HISTORY_BY_TIME, {
+    since_interval: sinceInterval,
+    target_config_ids: normalizedIds,
+  });
+
+  if (error) {
+    logError("读取趋势历史失败", error);
+    if (isMissingFunctionError(error)) {
+      return fallbackLoadTrendHistory(supabase, normalizedIds, sinceInterval);
+    }
+    return {};
+  }
+
+  return mapTrendRows(data as RpcHistoryTrendRow[] | null);
+}
+
+async function fallbackLoadTrendHistory(
+  supabase: SupabaseClient<any, string>,
+  allowedIds: string[] | null,
+  sinceInterval: string
+): Promise<TrendDataMap> {
+  try {
+    const intervalDays = Number(sinceInterval.split(" ")[0]);
+    const cutoff = new Date(
+      Date.now() - intervalDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    let query = supabase
+      .from("check_history")
+      .select("config_id, status, latency_ms, checked_at")
+      .gt("checked_at", cutoff)
+      .order("checked_at", { ascending: true });
+
+    if (allowedIds) {
+      query = query.in("config_id", allowedIds);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      logError("fallback 模式下读取趋势失败", error);
+      return {};
+    }
+
+    return mapTrendRows(data as RpcHistoryTrendRow[] | null);
+  } catch (error) {
+    logError("fallback 模式下读取趋势异常", error);
+    return {};
+  }
+}
+
+function mapTrendRows(rows: RpcHistoryTrendRow[] | null): TrendDataMap {
+  if (!rows || rows.length === 0) {
+    return {};
+  }
+
+  const grouped: TrendDataMap = {};
+  for (const row of rows) {
+    if (!grouped[row.config_id]) {
+      grouped[row.config_id] = [];
+    }
+    grouped[row.config_id].push({
+      timestamp: row.checked_at,
+      latencyMs: row.latency_ms,
+      status: row.status as CheckResult["status"],
+    });
+  }
+
+  for (const key of Object.keys(grouped)) {
+    grouped[key] = grouped[key].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    grouped[key] = sampleTrendData(grouped[key]);
+  }
+
+  return grouped;
+}
+
+function sampleTrendData(
+  points: TrendDataPoint[],
+  limit: number = 500
+) {
+  if (points.length <= limit) {
+    return points;
+  }
+
+  const indices = new Set<number>();
+  indices.add(0);
+  indices.add(points.length - 1);
+
+  let maxLatency = -Infinity;
+  let minLatency = Infinity;
+  let maxIndex = -1;
+  let minIndex = -1;
+
+  for (let i = 0; i < points.length; i += 1) {
+    const current = points[i];
+    if (i > 0 && current.status !== points[i - 1].status) {
+      indices.add(i);
+    }
+    if (typeof current.latencyMs === "number") {
+      if (current.latencyMs > maxLatency) {
+        maxLatency = current.latencyMs;
+        maxIndex = i;
+      }
+      if (current.latencyMs < minLatency) {
+        minLatency = current.latencyMs;
+        minIndex = i;
+      }
+    }
+  }
+
+  if (maxIndex >= 0) {
+    indices.add(maxIndex);
+  }
+  if (minIndex >= 0) {
+    indices.add(minIndex);
+  }
+
+  const targetCount = Math.min(limit, points.length);
+  const sortedIndices = Array.from(indices).sort((a, b) => a - b);
+
+  if (sortedIndices.length >= targetCount) {
+    const stride = Math.ceil(sortedIndices.length / targetCount);
+    return sortedIndices.filter((_, index) => index % stride === 0).map((idx) => points[idx]);
+  }
+
+  const remaining = targetCount - sortedIndices.length;
+  const stride = Math.max(1, Math.floor(points.length / remaining));
+  for (let i = 0; i < points.length && indices.size < targetCount; i += stride) {
+    indices.add(i);
+  }
+
+  return Array.from(indices)
+    .sort((a, b) => a - b)
+    .slice(0, targetCount)
+    .map((idx) => points[idx]);
 }

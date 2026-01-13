@@ -1,0 +1,57 @@
+"use client";
+
+import type {AvailabilityPeriod, AvailabilityStat} from "@/lib/types";
+import {cn} from "@/lib/utils";
+
+interface AvailabilityStatsProps {
+  stats?: AvailabilityStat[] | null;
+  period: AvailabilityPeriod;
+}
+
+const PERIOD_LABELS: Record<AvailabilityPeriod, string> = {
+  "7d": "7 天",
+  "15d": "15 天",
+  "30d": "30 天",
+};
+
+function getAvailabilityColor(pct: number | null | undefined) {
+  if (pct === null || pct === undefined) {
+    return "text-muted-foreground";
+  }
+  if (pct >= 99) {
+    return "text-green-500";
+  }
+  if (pct >= 95) {
+    return "text-yellow-500";
+  }
+  return "text-red-500";
+}
+
+export function AvailabilityStats({ stats, period }: AvailabilityStatsProps) {
+  const current = stats?.find((item) => item.period === period);
+  const pct = current?.availabilityPct ?? null;
+  const pctLabel = pct === null ? "—" : `${pct.toFixed(2)}%`;
+
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          可用性 ({PERIOD_LABELS[period]})
+        </p>
+        <p className="text-[10px] text-muted-foreground">
+          {current
+            ? `${current.operationalCount}/${current.totalChecks} 成功`
+            : "暂无数据"}
+        </p>
+      </div>
+      <span
+        className={cn(
+          "font-mono text-sm font-bold",
+          getAvailabilityColor(pct)
+        )}
+      >
+        {pctLabel}
+      </span>
+    </div>
+  );
+}

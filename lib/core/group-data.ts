@@ -7,10 +7,12 @@
  */
 import {loadProviderConfigsFromDB} from "../database/config-loader";
 import {getGroupInfo} from "../database/group-info";
+import {getAvailabilityStats} from "../database/availability";
+import {loadHistoryTrendData} from "../database/history";
 import {getPollingIntervalLabel, getPollingIntervalMs} from "./polling-config";
 import {ensureOfficialStatusPoller} from "./official-status-poller";
 import {buildProviderTimelines, loadSnapshotForScope} from "./health-snapshot-service";
-import type {ProviderTimeline, RefreshMode} from "../types";
+import type {AvailabilityPeriod, AvailabilityStatsMap, ProviderTimeline, RefreshMode, TrendDataMap} from "../types";
 import {UNGROUPED_DISPLAY_NAME, UNGROUPED_KEY} from "../types";
 
 /**
@@ -24,6 +26,9 @@ export interface GroupDashboardData {
   total: number;
   pollIntervalLabel: string;
   pollIntervalMs: number;
+  availabilityStats: AvailabilityStatsMap;
+  trendData: TrendDataMap;
+  trendPeriod: AvailabilityPeriod;
   generatedAt: number;
   websiteUrl?: string | null;
 }
@@ -61,7 +66,7 @@ export async function getAvailableGroups(): Promise<string[]> {
  */
 export async function loadGroupDashboardData(
   targetGroupName: string,
-  options?: { refreshMode?: RefreshMode }
+  options?: { refreshMode?: RefreshMode; trendPeriod?: AvailabilityPeriod }
 ): Promise<GroupDashboardData | null> {
   ensureOfficialStatusPoller();
 
@@ -91,6 +96,7 @@ export async function loadGroupDashboardData(
     allowedIds.size > 0 ? [...allowedIds].sort().join("|") : "__empty__";
   const cacheKey = `group:${targetGroupName}:${pollIntervalMs}:${providerKey}`;
   const refreshMode = options?.refreshMode ?? "missing";
+  const trendPeriod = options?.trendPeriod ?? "7d";
 
   const history = await loadSnapshotForScope(
     {
@@ -113,6 +119,11 @@ export async function loadGroupDashboardData(
 
   const lastUpdated = allEntries.length ? allEntries[0].checkedAt : null;
   const generatedAt = Date.now();
+  const configIds = groupConfigs.map((config) => config.id);
+  const [availabilityStats, trendData] = await Promise.all([
+    getAvailabilityStats(configIds),
+    loadHistoryTrendData({ period: trendPeriod, allowedIds: configIds }),
+  ]);
 
   // 获取分组信息（仅对有名分组）
   let websiteUrl: string | undefined | null;
@@ -129,6 +140,9 @@ export async function loadGroupDashboardData(
     total: providerTimelines.length,
     pollIntervalLabel,
     pollIntervalMs,
+    availabilityStats,
+    trendData,
+    trendPeriod,
     generatedAt,
     websiteUrl,
   };

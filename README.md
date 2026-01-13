@@ -151,6 +151,8 @@ Check CX 是一套基于 **Next.js 16** + **shadcn/ui** 构建的现代化 AI �
 
    # 检测间隔(秒),范围 15-600,默认 60
    CHECK_POLL_INTERVAL_SECONDS=60
+   # 历史数据保留天数,范围 7-365,默认 30
+   HISTORY_RETENTION_DAYS=30
    # 检测并发数,范围 1-20,默认 5
    CHECK_CONCURRENCY=5
    ```
@@ -158,8 +160,8 @@ Check CX 是一套基于 **Next.js 16** + **shadcn/ui** 构建的现代化 AI �
 4. **初始化数据库**
 
    在 Supabase SQL Editor 中执行 `supabase/migrations/` 目录下的迁移脚本,创建必要的表结构。
-   最新版本依赖 `get_recent_check_history` 与 `prune_check_history` 两个 RPC,如果你是全新部署可直接运行 `supabase/schema.sql`。
-   如果是升级已有数据库,至少需要手动执行 `supabase/migrations/20251127090000_snapshot_functions.sql` 以确保 RPC 存在,否则后端会退回旧的全表扫描逻辑,性能大幅下降。
+   最新版本依赖 `get_recent_check_history`/`prune_check_history`/`get_check_history_by_time` 等 RPC 以及 `availability_stats` 视图,如果你是全新部署可直接运行 `supabase/schema.sql`。
+   如果是升级已有数据库,请确保按顺序执行 `supabase/migrations/` 中的新迁移脚本,避免缺失 RPC 或视图导致性能下降。
 
 5. **添加检测配置**
 
@@ -254,14 +256,19 @@ Check CX 使用 Supabase 的两张核心表:
 
 ### 数据库函数
 
-为了避免在 API 聚合时做全表扫描,数据库同时提供了两个 RPC:
+为了避免在 API 聚合时做全表扫描,数据库提供以下 RPC 与视图:
+
+- `availability_stats` 视图
+  - 提供 7/15/30 天可用性统计百分比。
 
 - `get_recent_check_history(limit_per_config integer, target_config_ids uuid[])`
   - 使用窗口函数一次性返回每个配置最近的 N 条记录;
   - Dashboard、分组 API 以及后台轮询器的快照读取都依赖它。
-- `prune_check_history(limit_per_config integer)`
-  - 根据同样的窗口结果批量删除多余的旧记录,写入历史后立即调用;
-  - 若 RPC 暂时缺失,后端会退回旧的清理逻辑,但性能会大幅下降。
+- `prune_check_history(retention_days integer, limit_per_config integer)`
+  - 按保留天数清理历史记录（兼容旧参数名 `limit_per_config`）;
+  - 写入历史后立即调用,用于控制数据体量。
+- `get_check_history_by_time(since_interval interval, target_config_ids uuid[])`
+  - 按时间范围拉取历史数据,用于趋势图展示。
 
 ### 添加检测配置
 
@@ -593,7 +600,7 @@ providers/ → check_history → group-dashboard-view.tsx (分组页)
 
 3. **数据存储与裁剪**
    - `lib/database/history.ts` 通过 RPC `get_recent_check_history`/`prune_check_history` 写入并裁剪历史
-   - 每个配置最多保留 60 条记录，缺少 RPC 时自动退回旧逻辑以保证兼容
+   - 历史数据按保留天数裁剪（默认 30 天，可配置 `HISTORY_RETENTION_DAYS`）
 
 4. **健康快照聚合**
    - `lib/core/health-snapshot-service.ts` 统一处理缓存、刷新策略与官方状态附加
@@ -630,6 +637,7 @@ pnpm db:types         # 生成 Supabase 类型定义
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY` | ✅ | - | Supabase 公开密钥 |
 | `SUPABASE_SERVICE_ROLE_KEY` | ❌ | - | Supabase Service Role Key (服务端使用,绕过 RLS) |
 | `CHECK_POLL_INTERVAL_SECONDS` | ❌ | 60 | 检测间隔(秒),范围 15-600 |
+| `HISTORY_RETENTION_DAYS` | ❌ | 30 | 历史数据保留天数,范围 7-365 |
 | `CHECK_CONCURRENCY` | ❌ | 5 | 检测并发数,范围 1-20 |
 | `OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS` | ❌ | 300 | 官方状态检查间隔(秒),范围 60-3600 |
 
@@ -659,7 +667,7 @@ pnpm db:types         # 生成 Supabase 类型定义
 
 ### 历史数据能保存多久?
 
-每个配置最多保留 60 条历史记录。如需更长时间保存,可以修改 `lib/database/history.ts` 中的 `MAX_HISTORY_PER_CONFIG` 常量。
+默认保留 30 天历史数据，可通过环境变量 `HISTORY_RETENTION_DAYS`（范围 7–365 天）进行调整。
 
 ### 如何使用分组功能?
 

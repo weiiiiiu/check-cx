@@ -35,6 +35,17 @@ export interface CheckHistoryRow {
 }
 
 /**
+ * availability_stats 视图的行类型
+ */
+export interface AvailabilityStats {
+  config_id: string;
+  period: "7d" | "15d" | "30d";
+  total_checks: number;
+  operational_count: number;
+  availability_pct: number | null;
+}
+
+/**
  * group_info 表的行类型
  */
 export interface GroupInfoRow {

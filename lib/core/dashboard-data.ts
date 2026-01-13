@@ -8,10 +8,12 @@
  */
 import {loadProviderConfigsFromDB} from "../database/config-loader";
 import {loadGroupInfos} from "../database/group-info";
+import {getAvailabilityStats} from "../database/availability";
+import {loadHistoryTrendData} from "../database/history";
 import {getPollingIntervalLabel, getPollingIntervalMs} from "./polling-config";
 import {ensureOfficialStatusPoller} from "./official-status-poller";
 import {buildProviderTimelines, loadSnapshotForScope} from "./health-snapshot-service";
-import type {DashboardData, GroupedProviderTimelines, ProviderTimeline, RefreshMode,} from "../types";
+import type {AvailabilityPeriod, DashboardData, GroupedProviderTimelines, ProviderTimeline, RefreshMode,} from "../types";
 import type {GroupInfoRow} from "../types/database";
 import {UNGROUPED_DISPLAY_NAME, UNGROUPED_KEY} from "../types";
 
@@ -81,6 +83,7 @@ function groupTimelines(timelines: ProviderTimeline[], groupInfos: GroupInfoRow[
  */
 export async function loadDashboardData(options?: {
   refreshMode?: RefreshMode;
+  trendPeriod?: AvailabilityPeriod;
 }): Promise<DashboardData> {
   ensureOfficialStatusPoller();
   const allConfigs = await loadProviderConfigsFromDB();
@@ -94,6 +97,7 @@ export async function loadDashboardData(options?: {
     allowedIds.size > 0 ? [...allowedIds].sort().join("|") : "__empty__";
   const cacheKey = `dashboard:${pollIntervalMs}:${providerKey}`;
   const refreshMode = options?.refreshMode ?? "missing";
+  const trendPeriod = options?.trendPeriod ?? "7d";
 
   const history = await loadSnapshotForScope(
     {
@@ -120,6 +124,11 @@ export async function loadDashboardData(options?: {
   const groupInfos = await loadGroupInfos();
   // 生成分组数据
   const groupedTimelines = groupTimelines(providerTimelines, groupInfos);
+  const configIds = allConfigs.map((config) => config.id);
+  const [availabilityStats, trendData] = await Promise.all([
+    getAvailabilityStats(configIds),
+    loadHistoryTrendData({ period: trendPeriod, allowedIds: configIds }),
+  ]);
 
   return {
     providerTimelines,
@@ -128,6 +137,9 @@ export async function loadDashboardData(options?: {
     total: providerTimelines.length,
     pollIntervalLabel,
     pollIntervalMs,
+    availabilityStats,
+    trendData,
+    trendPeriod,
     generatedAt,
   };
 }

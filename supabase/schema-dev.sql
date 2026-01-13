@@ -102,6 +102,45 @@ CREATE INDEX idx_dev_check_history_checked_at
 CREATE INDEX idx_dev_check_history_config_id
     ON dev.check_history USING btree (config_id);
 
+CREATE INDEX idx_dev_history_config_checked
+    ON dev.check_history USING btree (config_id, checked_at DESC);
+
+-- 可用性统计视图
+CREATE OR REPLACE VIEW dev.availability_stats AS
+SELECT
+    config_id,
+    '7d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM dev.check_history
+WHERE checked_at > NOW() - INTERVAL '7 days'
+GROUP BY config_id
+
+UNION ALL
+
+SELECT
+    config_id,
+    '15d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM dev.check_history
+WHERE checked_at > NOW() - INTERVAL '15 days'
+GROUP BY config_id
+
+UNION ALL
+
+SELECT
+    config_id,
+    '30d'::text AS period,
+    COUNT(*) AS total_checks,
+    COUNT(*) FILTER (WHERE status = 'operational') AS operational_count,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational') / NULLIF(COUNT(*), 0), 2) AS availability_pct
+FROM dev.check_history
+WHERE checked_at > NOW() - INTERVAL '30 days'
+GROUP BY config_id;
+
 -- 自动更新时间的触发函数
 CREATE OR REPLACE FUNCTION dev.update_updated_at_column()
 RETURNS trigger
@@ -215,22 +254,65 @@ $$;
 
 -- RPC: 裁剪历史记录
 CREATE OR REPLACE FUNCTION dev.prune_check_history(
-  limit_per_config integer DEFAULT 60
+  retention_days integer DEFAULT NULL,
+  limit_per_config integer DEFAULT NULL
 )
-RETURNS void
-LANGUAGE sql
+RETURNS integer
+LANGUAGE plpgsql
 VOLATILE
 AS $$
-  WITH ranked AS (
-    SELECT
-      id,
-      ROW_NUMBER() OVER (PARTITION BY config_id ORDER BY checked_at DESC) AS rn
-    FROM dev.check_history
-  )
+DECLARE
+  effective_days integer;
+  deleted_count integer;
+BEGIN
+  effective_days := LEAST(365, GREATEST(7, COALESCE(retention_days, limit_per_config, 30)));
+
   DELETE FROM dev.check_history
-  WHERE id IN (
-    SELECT id FROM ranked WHERE rn > limit_per_config
-  );
+  WHERE checked_at < NOW() - (effective_days || ' days')::interval;
+
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$;
+
+-- RPC: 按时间范围读取历史记录
+CREATE OR REPLACE FUNCTION dev.get_check_history_by_time(
+  since_interval interval DEFAULT '1 hour',
+  target_config_ids uuid[] DEFAULT NULL
+)
+RETURNS TABLE (
+  config_id uuid,
+  status text,
+  latency_ms integer,
+  ping_latency_ms integer,
+  checked_at timestamptz,
+  message text,
+  name text,
+  type text,
+  model text,
+  endpoint text,
+  group_name text
+)
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    h.config_id,
+    h.status,
+    h.latency_ms,
+    h.ping_latency_ms::integer,
+    h.checked_at,
+    h.message,
+    c.name,
+    c.type::text,
+    c.model,
+    c.endpoint,
+    c.group_name
+  FROM dev.check_history h
+  JOIN dev.check_configs c ON c.id = h.config_id
+  WHERE h.checked_at > NOW() - since_interval
+    AND (target_config_ids IS NULL OR h.config_id = ANY(target_config_ids))
+  ORDER BY c.name ASC, h.checked_at DESC;
 $$;
 
 -- ============================================

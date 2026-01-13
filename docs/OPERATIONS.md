@@ -19,6 +19,7 @@
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY`：Supabase 浏览器可用的 Key
 - `CHECK_POLL_INTERVAL_SECONDS`（可选）：Provider 检查间隔，默认 60 秒，支持 15–600
 - `OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS`（可选）：官方状态轮询间隔，默认 300 秒，支持 60–3600
+- `HISTORY_RETENTION_DAYS`（可选）：历史数据保留天数，默认 30 天，支持 7–365
 
 环境变量放置建议：
 
@@ -51,6 +52,7 @@
 4. **配置环境变量**
    - 本地/预发/生产分别配置 `NEXT_PUBLIC_SUPABASE_URL` 与 Key。
    - 如需调整轮询频率，设置 `CHECK_POLL_INTERVAL_SECONDS` 与 `OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS`。
+   - 如需调整历史数据保留时长，设置 `HISTORY_RETENTION_DAYS`。
 
 5. **启动服务并验证**
    - 本地开发：`pnpm dev`
@@ -178,7 +180,7 @@
   - 对公网 Provider：推荐 30–60 秒。
   - 对内部代理或对成本敏感场景：可以适当调大到 120–300 秒。
 - 历史保留：
-  - 默认每个 Provider 保留最近 60 条记录，足以覆盖 1–2 小时内的趋势分析。
+  - 默认保留 30 天历史数据（可通过 `HISTORY_RETENTION_DAYS` 调整）。
   - 如需更长的可视窗口，建议通过 BI/指标系统做二次聚合，而不是无限增加数据库明细。
 
 ## 8. 运维 checklist

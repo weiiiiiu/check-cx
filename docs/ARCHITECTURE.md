@@ -19,7 +19,7 @@
   - 周期性执行：
     1. 从 Supabase 读取启用的 `check_configs`
     2. 调用 `lib/providers` 下具体 Provider 检查实现
-    3. 将结果写入 `check_history`，并按 Provider 限制为最近 60 条
+    3. 将结果写入 `check_history`，并按保留天数裁剪历史数据
 
 - **官方状态轮询器**
   - 入口：`lib/core/official-status-poller.ts`
@@ -48,7 +48,7 @@
 
 3. **历史记录写入与裁剪**
    - `lib/database/history.ts#appendHistory` 负责将本轮 `CheckResult` 写入 `check_history` 表。
-   - 写入后调用 `cleanupOldHistory()`，按 `MAX_POINTS_PER_PROVIDER = 60` 清理各 Provider 多余的旧记录。
+   - 写入后调用裁剪逻辑，按 `HISTORY_RETENTION_DAYS`（默认 30 天）清理过期记录。
 
 4. **Dashboard 数据聚合**
    - `lib/core/dashboard-data.ts#loadDashboardData`：
