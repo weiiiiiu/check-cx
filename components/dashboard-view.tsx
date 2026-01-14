@@ -180,10 +180,11 @@ function GroupPanel({
             <ChevronDown className="h-4 w-4 text-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 sm:h-5 sm:w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <h2 className="truncate text-lg font-bold tracking-tight text-foreground sm:text-2xl">
                 {group.displayName}
               </h2>
+              <GroupTags tags={group.tags} />
               {group.websiteUrl && (
                 <a
                   href={group.websiteUrl}
@@ -196,7 +197,6 @@ function GroupPanel({
                 </a>
               )}
             </div>
-            <GroupTags tags={group.tags} className="mt-2" />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                {statusSummary.operational > 0 && (
                  <span className="flex items-center gap-1.5 whitespace-nowrap">

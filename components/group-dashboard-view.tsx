@@ -211,10 +211,11 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
             </span>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl">
               {displayName}
             </h1>
+            <GroupTags tags={data.tags} />
             {data.websiteUrl && (
               <a
                 href={data.websiteUrl}
@@ -226,7 +227,6 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
               </a>
             )}
           </div>
-          <GroupTags tags={data.tags} className="mt-2" />
           
            <div className="flex flex-wrap items-center gap-2.5">
             {statusSummary.operational > 0 && (
